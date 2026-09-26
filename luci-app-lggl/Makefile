@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-lggl
 PKG_VERSION:=0.1.2
-PKG_RELEASE:=2
+PKG_RELEASE:=3
 PKG_LICENSE:=EUPL-1.2
 
 include $(INCLUDE_DIR)/package.mk

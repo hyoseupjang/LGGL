@@ -8,7 +8,8 @@ main() {
 
     [ "$(id -u)" = 0 ] || { echo 'root로 실행하십시오.' >&2; exit 1; }
     command -v apk >/dev/null || { echo 'OpenWrt 25.12의 apk가 필요합니다.' >&2; exit 1; }
-    arch=$(apk --print-arch)
+    arch=$(cat /etc/apk/arch)
+    [ -n "$arch" ] || { echo '패키지 아키텍처를 확인할 수 없습니다.' >&2; exit 1; }
     case " @ARCHITECTURES@ " in
         *" $arch "*) ;;
         *) echo "이 릴리스에서 지원하지 않는 아키텍처입니다: $arch" >&2; exit 1 ;;

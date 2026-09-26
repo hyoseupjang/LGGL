@@ -1,0 +1,7 @@
+{
+  "luci-app-lggl": {
+    "description": "Configure LGGL and read OAM counters",
+    "read": { "uci": [ "lggl" ], "ubus": { "lggl": [ "status" ] } },
+    "write": { "uci": [ "lggl" ] }
+  }
+}

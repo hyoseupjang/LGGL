@@ -1,0 +1,58 @@
+#!/bin/sh
+case "$1" in
+	list) printf '%s\n' '{"status":{}}' ;;
+	call)
+		[ "$2" = status ] || exit 1
+		. /lib/functions.sh
+		. /usr/share/libubox/jshn.sh
+		ub=0 ds=0
+		for file in /var/run/lggl/*.counts; do
+			[ -f "$file" ] || continue
+			read -r u d < "$file"
+			case "$u" in ''|*[!0-9]*) continue ;; esac
+			case "$d" in ''|*[!0-9]*) continue ;; esac
+			ub=$((ub + u))
+			ds=$((ds + d))
+		done
+		service=$(ubus call service list '{"name":"lggl"}' 2>/dev/null) || service='{}'
+		config_load lggl
+		config_get devices main interfaces
+		json_set_namespace report
+		json_init
+		json_add_int ub "$ub"
+		json_add_int ds "$ds"
+		json_add_array devices
+		for device in $devices; do
+			case "$device" in *[!a-zA-Z0-9_.:-]*|.|..|'') continue ;; esac
+			[ "${#device}" -lt 16 ] || continue
+			running=0 pid=0 state=stopped error=0 statepid=0 mac=''
+			json_set_namespace service
+			json_load "$service"
+			if json_select lggl 2>/dev/null && json_select instances 2>/dev/null && json_select "$device" 2>/dev/null; then
+				json_get_var running running 0
+				json_get_var pid pid 0
+			fi
+			if [ "$running" = 1 ]; then
+				state=starting
+				if [ -r "/var/run/lggl/$device.state" ]; then
+					read -r statepid savedstate savederror < "/var/run/lggl/$device.state"
+					if [ "$statepid" = "$pid" ]; then
+						case "$savedstate" in listening|waiting) state=$savedstate ;; esac
+						case "$savederror" in ''|*[!0-9]*) ;; *) error=$savederror ;; esac
+					fi
+				fi
+			fi
+			[ ! -r "/sys/class/net/$device/address" ] || read -r mac < "/sys/class/net/$device/address"
+			json_set_namespace report
+			json_add_object ''
+			json_add_string name "$device"
+			json_add_string state "$state"
+			json_add_string mac "$mac"
+			json_add_int error "$error"
+			json_close_object
+		done
+		json_close_array
+		json_dump
+		;;
+	*) exit 1 ;;
+esac

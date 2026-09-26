@@ -1,0 +1,38 @@
+# Publish only the package sources, installer and release workflow.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/.github/
+!/scripts/
+!/lggl/
+!/luci-app-lggl/
+
+dist/
+__pycache__/
+*.so
+.DS_Store
+*.key.pem
+/secret
+/sectet
+
+# Local analysis, build cache and migration backup
+/work/
+/outputs/
+/local-archive/
+
+# Proprietary uploads / extracted images / packet captures (never publish)
+/[Ff]irmware/
+/analysis/
+/captures/
+/sdk/
+/backups/
+/REVIEW.md
+/tests/golden.json
+*.pcap
+*.pcapng
+*.bin
+*.trx
+*.img
+*.apk
+*.ipk

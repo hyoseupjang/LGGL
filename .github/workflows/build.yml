@@ -1,0 +1,115 @@
+name: OpenWrt packages
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: aarch64_cortex-a53
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/mediatek/filogic/openwrt-sdk-25.12.5-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            sha256: ff4a38a397caa2cfe1c39e18f84ddede14878221b3593c3f2c4cfe24e3ec4c25
+          - arch: aarch64_cortex-a72
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/bcm27xx/bcm2711/openwrt-sdk-25.12.5-bcm27xx-bcm2711_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            sha256: 84c1d213becdb10d138729fa3542729d794f234d54a316c375e82e9ed6c9e83e
+          - arch: aarch64_generic
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/armsr/armv8/openwrt-sdk-25.12.5-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            sha256: 1b0316604a3e820b2b008a1baff3f9dac6716af942bef800930e58c7de98c98b
+          - arch: x86_64
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            sha256: 0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c
+          - arch: mips_24kc
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/ath79/generic/openwrt-sdk-25.12.5-ath79-generic_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            sha256: bc4307ae2065c0c0b7c84627356e9f3d368a5a803c81552fcb77aa034a843f5a
+          - arch: mipsel_24kc
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/ramips/mt7621/openwrt-sdk-25.12.5-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            sha256: 9962084f4131610e90e48bc864c6ceade0b238f15f335de5f672910532b20e9c
+          - arch: arm_cortex-a7_neon-vfpv4
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/ipq40xx/generic/openwrt-sdk-25.12.5-ipq40xx-generic_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
+            sha256: af3d15643f8459335b1c98dc97dd47897d2d8e825a990a161b16b43de2281515
+          - arch: arm_cortex-a15_neon-vfpv4
+            sdk: https://downloads.openwrt.org/releases/25.12.5/targets/ipq806x/generic/openwrt-sdk-25.12.5-ipq806x-generic_gcc-14.3.0_musl_eabi.Linux-x86_64.tar.zst
+            sha256: d2e41c7ef6e3a91b6809950a7e29554d91fff7f903f5ffa010fd9dd4c6370ed7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev libssl-dev python3 python3-setuptools rsync unzip zstd gawk gettext xsltproc
+      - name: Check installer syntax
+        run: sh -n scripts/install.sh
+      - name: Download SDK
+        env:
+          SDK_URL: ${{ matrix.sdk }}
+          SDK_SHA256: ${{ matrix.sha256 }}
+        run: |
+          curl --fail --location --retry 3 "$SDK_URL" -o sdk.tar.zst
+          echo "$SDK_SHA256  sdk.tar.zst" | sha256sum -c -
+          mkdir sdk
+          tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
+      - name: Build
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          cd sdk
+          cp -r ../lggl ../luci-app-lggl package/
+          make defconfig
+          make package/lggl/compile package/luci-app-lggl/compile -j2 V=s
+          mkdir -p ../dist
+          find bin/packages -type f \( -name 'lggl-*.apk' -o -name 'luci-app-lggl-*.apk' \) -exec cp '{}' ../dist/ \;
+          test "$(find ../dist -name '*.apk' | wc -l)" -eq 2
+          cd ../dist
+          version=$(sed -n 's/^PKG_VERSION:=//p' ../lggl/Makefile)
+          release=$(sed -n 's/^PKG_RELEASE:=//p' ../lggl/Makefile)
+          version="$version-r$release"
+          test -f "lggl-$version.apk"
+          test -f "luci-app-lggl-$version.apk"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            test "$GITHUB_REF_NAME" = "v$version"
+          fi
+          for package in lggl luci-app-lggl; do
+            mv "$package-$version.apk" "$package-$version-$PACKAGE_ARCH.apk"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lggl-${{ matrix.arch }}
+          retention-days: 14
+          path: dist/*.apk
+          if-no-files-found: error
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lggl-*
+          merge-multiple: true
+          path: dist
+      - name: Prepare installer
+        run: |
+          version=$(sed -n 's/^PKG_VERSION:=//p' lggl/Makefile)
+          release=$(sed -n 's/^PKG_RELEASE:=//p' lggl/Makefile)
+          version="$version-r$release"
+          architectures=$(printf '%s\n' dist/lggl-"$version"-*.apk | sed "s|dist/lggl-$version-||; s|\.apk$||" | sort | tr '\n' ' ')
+          sed -e "s|@VERSION@|$version|g" -e "s|@REPOSITORY@|$GITHUB_REPOSITORY|g" -e "s|@ARCHITECTURES@|$architectures|g" scripts/install.sh > dist/install.sh
+          cp LICENSE dist/
+          printf 'Copyright (c) 2026 LGGL contributors\nLicensed under the EUPL-1.2\nSource: https://github.com/%s/tree/%s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" > dist/SOURCE.txt
+          cd dist
+          sha256sum *.apk install.sh LICENSE SOURCE.txt > SHA256SUMS
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --generate-notes --title "$RELEASE_TAG"

@@ -1,0 +1,26 @@
+{
+  "admin/services/lggl": {
+    "title": "LGGL",
+    "order": 50,
+    "action": {
+      "type": "view",
+      "path": "lggl"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-lggl"
+      ]
+    }
+  },
+  "admin/network/lggl": {
+    "action": {
+      "type": "view",
+      "path": "lggl"
+    },
+    "depends": {
+      "acl": [
+        "luci-app-lggl"
+      ]
+    }
+  }
+}
